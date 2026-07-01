@@ -117,6 +117,45 @@ services:
     restart: on-failure
 
   # --------------------------------------------------------------
+  # Analytics - anomaly detection / predictive maintenance (claude.md
+  # Phase 5). Its own Kafka consumer group, decoupled from `consumer`
+  # so the ML stack can never stall raw telemetry ingestion. Model
+  # artifacts are bind-mounted so a trained model survives rebuilds -
+  # they are gitignored (analytics/models/*.joblib), runtime output,
+  # not source. Train one with:
+  #   docker compose run --rm analytics python analytics/model_training/train_isolation_forest.py
+  # then `docker compose restart analytics` to load it (v1 is
+  # restart-to-reload, not hot-reload).
+  # --------------------------------------------------------------
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foam_analytics
+    command: ["python", "analytics/analytics_consumer.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TELEMETRY_TOPIC: scara.telemetry.v1
+      ANALYTICS_CONSUMER_GROUP_ID: foam-placement-analytics
+      MACHINE_ID: foam_placement_01
+      EWMA_ALPHA: "0.2"
+      STAT_ANOMALY_K: "3.0"
+      MAX_PLAUSIBLE_CYCLE_SECONDS: "30.0"
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_DB: foam_placement
+      TIMESCALE_USER: foam_admin
+      TIMESCALE_PASSWORD: foam_admin_pw
+    volumes:
+      - ./analytics/models:/app/analytics/models
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: on-failure
+
+  # --------------------------------------------------------------
   # Simulator (optional) - the FSM edge service, containerized.
   # Off by default; enable with `docker compose --profile simulator up`.
   # For local development, prefer running `python main.py` on the

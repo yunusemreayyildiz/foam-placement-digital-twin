@@ -19,3 +19,12 @@ psycopg2-binary>=2.9.9
 # config/io_mapping.yaml and .env-style config loading.
 pyyaml==6.0.2
 python-dotenv==1.0.1
+
+# Analytics / predictive-maintenance layer (claude.md Phase 5):
+# EWMA scoring needs only the stdlib, but the IsolationForest layer
+# needs scikit-learn (+ numpy, its only hard dependency here) and
+# joblib to persist/load trained models. No pandas - the feature
+# matrix is small enough for plain Python/numpy.
+scikit-learn==1.5.2
+numpy==2.1.3
+joblib==1.4.2
