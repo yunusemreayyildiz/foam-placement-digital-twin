@@ -1,0 +1,145 @@
+# Foam Placement Machine Digital Twin - infrastructure stack.
+# Brings up: Kafka (KRaft mode, dual listener), TimescaleDB, Grafana,
+# and the consumer micro-batch service (claude.md Phase 3).
+#
+# The FSM simulator (main.py) is NOT run here by default - per
+# README.md's "Quick start" it's meant to run locally (`python
+# main.py`) against EXTERNAL://localhost:9092 during development.
+# To run it in Docker too, use: docker compose --profile simulator up
+
+services:
+  # --------------------------------------------------------------
+  # Kafka - KRaft mode (no Zookeeper), dual listener setup:
+  #   INTERNAL (kafka:29092)   -> used by containers on this network
+  #                                (consumer, optionally simulator)
+  #   EXTERNAL (localhost:9092) -> used by host processes, e.g.
+  #                                `python main.py` run outside Docker
+  # --------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: foam_kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "foam-placement-kraft-cluster-01"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  # --------------------------------------------------------------
+  # TimescaleDB - stores telemetry_events hypertable
+  #   (schema created automatically by consumer.py / database/models.py
+  #   on first successful connection - no manual init.sql needed)
+  # --------------------------------------------------------------
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: foam_timescaledb
+    environment:
+      POSTGRES_DB: foam_placement
+      POSTGRES_USER: foam_admin
+      POSTGRES_PASSWORD: foam_admin_pw
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foam_admin -d foam_placement"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # --------------------------------------------------------------
+  # Grafana - auto-provisioned datasource + dashboard
+  #   (5 panels: kasa counter, error stats, event pie chart,
+  #    state timeline, last 20 events table)
+  # --------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: foam_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --------------------------------------------------------------
+  # Consumer - Kafka -> TimescaleDB micro-batch writer
+  # --------------------------------------------------------------
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foam_consumer
+    command: ["python", "consumer/consumer.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TELEMETRY_TOPIC: scara.telemetry.v1
+      CONSUMER_GROUP_ID: foam-placement-consumer
+      BATCH_MAX_SIZE: "50"
+      BATCH_MAX_SECONDS: "2.0"
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_DB: foam_placement
+      TIMESCALE_USER: foam_admin
+      TIMESCALE_PASSWORD: foam_admin_pw
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: on-failure
+
+  # --------------------------------------------------------------
+  # Simulator (optional) - the FSM edge service, containerized.
+  # Off by default; enable with `docker compose --profile simulator up`.
+  # For local development, prefer running `python main.py` on the
+  # host against EXTERNAL://localhost:9092 (see README quick start).
+  # --------------------------------------------------------------
+  simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foam_simulator
+    command: ["python", "main.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TELEMETRY_TOPIC: scara.telemetry.v1
+      MACHINE_ID: foam_placement_01
+      SCAN_INTERVAL_SECONDS: "0.5"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    profiles: ["simulator"]
+    restart: unless-stopped
+
+volumes:
+  kafka_data:
+  timescale_data:
+  grafana_data:
