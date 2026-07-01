@@ -1,0 +1,137 @@
+{
+  "title": "Foam Placement Machine - Digital Twin",
+  "uid": "foam-placement-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Kasa Counter (Right / Left)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "graphMode": "none",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT (SELECT right_count FROM telemetry_events ORDER BY time DESC LIMIT 1) AS \"Right Kasa\", (SELECT left_count FROM telemetry_events ORDER BY time DESC LIMIT 1) AS \"Left Kasa\";",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Error Count Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT time AS \"time\", error_count AS \"error_count\" FROM telemetry_events ORDER BY time;",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Event Distribution by State",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": true },
+        "pieType": "pie",
+        "legend": { "displayMode": "table", "placement": "right", "values": ["percent", "value"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT state, COUNT(*) AS count FROM telemetry_events GROUP BY state ORDER BY count DESC;",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "State Timeline",
+      "type": "state-timeline",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "IDLE": { "color": "blue", "index": 0 },
+                "VACUUM_ON": { "color": "purple", "index": 1 },
+                "ROBOT_RUNNING": { "color": "green", "index": 2 },
+                "CAMERA_CHECK": { "color": "light-blue", "index": 3 },
+                "MARKING": { "color": "orange", "index": 4 },
+                "RIGHT_RELEASE": { "color": "yellow", "index": 5 },
+                "LEFT_RELEASE_WAIT": { "color": "semi-dark-blue", "index": 6 },
+                "WAIT_LEFT_IN_KASA": { "color": "dark-yellow", "index": 7 },
+                "CYCLE_DONE": { "color": "light-green", "index": 8 },
+                "RED_HANDLING": { "color": "red", "index": 9 }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": { "mergeValues": true, "showValue": "auto", "rowHeight": 0.9 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT time AS \"time\", state AS \"state\" FROM telemetry_events ORDER BY time;",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Last 20 Events",
+      "type": "table",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "time", "desc": true }]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT time, machine_id, state, right_count, left_count, error_count, alarm_code FROM telemetry_events ORDER BY time DESC LIMIT 20;",
+          "rawQuery": true
+        }
+      ]
+    }
+  ]
+}
