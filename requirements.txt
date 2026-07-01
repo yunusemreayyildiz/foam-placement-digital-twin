@@ -1,0 +1,21 @@
+# Kafka client. Using Confluent's official client (librdkafka-backed,
+# statically linked in the wheel - no separate librdkafka install
+# needed) instead of kafka-python-ng, which has known broken releases
+# (see the warning banner on its PyPI page) - e.g. 2.2.3 shipped a
+# kafka.util missing `classproperty`, breaking `import kafka` outright
+# on a clean install.
+confluent-kafka==2.14.2
+
+# TimescaleDB / PostgreSQL driver used by consumer/consumer.py and
+# database/models.py (executemany-based micro-batch inserts).
+# NOTE: version is a lower bound, not pinned exactly - psycopg2-binary
+# only ships prebuilt wheels for specific Python versions per release.
+# Pinning to an older release can force pip to build from source on a
+# newer Python (e.g. 3.13), which then fails without a local
+# PostgreSQL dev install (`pg_config` not found). Letting pip pick the
+# newest compatible release avoids that.
+psycopg2-binary>=2.9.9
+
+# config/io_mapping.yaml and .env-style config loading.
+pyyaml==6.0.2
+python-dotenv==1.0.1

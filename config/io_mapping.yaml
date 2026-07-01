@@ -1,0 +1,329 @@
+# IO mapping generated from docs/io-mapping.md
+# Fields: plc_address, sheet_tag, description, system_target, notes
+# Generated: 2026-06-29
+
+version: 1
+source: docs/io-mapping.md
+
+inputs:
+  - plc_address: "I0.0"
+    sheet_tag: "IN81"
+    description: "Start (BAŞLA)"
+    system_target: "Start/Auto-start"
+    notes: "Start push / auto-start"
+
+  - plc_address: "I0.1"
+    sheet_tag: "IN82"
+    description: "Light curtain (IŞIK BARİYERİ)"
+    system_target: "Safety Interrupt"
+    notes: "Safety curtain input"
+
+  - plc_address: "I0.2"
+    sheet_tag: "IN83"
+    description: "Reset switch (RESET ANAHTARI)"
+    system_target: "Operator Reset"
+    notes: ""
+
+  - plc_address: "I0.3"
+    sheet_tag: "IN84"
+    description: "Rotary forward (ROTARY İLERİ)"
+    system_target: "Rotary Control"
+    notes: "Rotary encoder/button"
+
+  - plc_address: "I0.4"
+    sheet_tag: "IN85"
+    description: "Rotary backward (ROTARY GERİ)"
+    system_target: "Rotary Control"
+    notes: ""
+
+  - plc_address: "I0.5"
+    sheet_tag: "IN86"
+    description: "Linear gripper forward (LİNEAR TUTUCU İLERİ)"
+    system_target: "Linear Gripper"
+    notes: ""
+
+  - plc_address: "I0.6"
+    sheet_tag: "IN87"
+    description: "Linear gripper back (LİNEAR TUTUCU GERİ)"
+    system_target: "Linear Gripper"
+    notes: ""
+
+  - plc_address: "I0.7"
+    sheet_tag: "IN88"
+    description: "Linear pulling cylinder forward (LİNEAR ÇEKME SİLİNDİRİ İLERİ)"
+    system_target: "Linear Cylinder"
+    notes: ""
+
+  - plc_address: "I1.0"
+    sheet_tag: "IN89"
+    description: "Linear pulling cylinder back (LİNEAR ÇEKME SİLİNDİRİ GERİ)"
+    system_target: "Linear Cylinder"
+    notes: ""
+
+  - plc_address: "I1.1"
+    sheet_tag: "IN90"
+    description: "Linear locking cylinder forward (LİNEAR SABİTLEME İLERİ)"
+    system_target: "Locking Cylinder"
+    notes: ""
+
+  - plc_address: "I1.2"
+    sheet_tag: "IN91"
+    description: "Linear locking cylinder back (LİNEAR SABİTLEME GERİ)"
+    system_target: "Locking Cylinder"
+    notes: ""
+
+  - plc_address: "I1.3"
+    sheet_tag: "IN92"
+    description: "1477 left vacuum OK (1477 SOL VACUUM OK)"
+    system_target: "Vacuum Telemetry"
+    notes: "Sensor OK flag"
+
+  - plc_address: "I1.4"
+    sheet_tag: "IN93"
+    description: "1477 right vacuum OK (1477 SAĞ VACUUM OK)"
+    system_target: "Vacuum Telemetry"
+    notes: ""
+
+  - plc_address: "I1.5"
+    sheet_tag: "IN94"
+    description: "1480 left vacuum OK (1480 SOL VACUUM OK)"
+    system_target: "Vacuum Telemetry"
+    notes: ""
+
+  - plc_address: "I1.6"
+    sheet_tag: "IN95"
+    description: "1480 right vacuum OK (1480 SAĞ VACUUM OK)"
+    system_target: "Vacuum Telemetry"
+    notes: ""
+
+  - plc_address: "I1.7"
+    sheet_tag: "IN96"
+    description: "Right box inner barrier (SAĞ KASA İÇİ BARİYER)"
+    system_target: "Safety Input"
+    notes: ""
+
+  - plc_address: "I2.0"
+    sheet_tag: "IN97"
+    description: "Left box inner barrier (SOL KASA İÇİ BARİYER)"
+    system_target: "Safety Input"
+    notes: ""
+
+  - plc_address: "I2.1"
+    sheet_tag: "IN98"
+    description: "Reject part pushbutton (RED PARÇA BUTON)"
+    system_target: "Manual Reject"
+    notes: "Reject request"
+
+  - plc_address: "I2.2"
+    sheet_tag: "IN99"
+    description: "Robot mode (ROBOTLU)"
+    system_target: "Mode Selector"
+    notes: ""
+
+  - plc_address: "I2.3"
+    sheet_tag: "IN100"
+    description: "Robotless mode (ROBOTSUZ)"
+    system_target: "Mode Selector"
+    notes: ""
+
+  - plc_address: "I2.4"
+    sheet_tag: "IN101"
+    description: "Sponge pick-up area sensor (SÜNGER ALMA ALANI SENSÖRÜ)"
+    system_target: "Part Detection"
+    notes: ""
+
+  - plc_address: "I2.5"
+    sheet_tag: "IN102"
+    description: "Tool sponge present (TOOL SÜNGER VARLIK)"
+    system_target: "Tool Sensor"
+    notes: ""
+
+  - plc_address: "I2.6"
+    sheet_tag: "IN103"
+    description: "1477 rotary table (1477 DÖNER TABLA)"
+    system_target: "Rotary Table"
+    notes: ""
+
+  - plc_address: "I2.7"
+    sheet_tag: "IN104"
+    description: "1480 rotary table (1480 DÖNER TABLA)"
+    system_target: "Rotary Table"
+    notes: ""
+
+  - plc_address: "I3.0"
+    sheet_tag: "IN105"
+    description: "Door & vibration safety (KAPI & VİBRASYON GÜVENLİK)"
+    system_target: "Safety Interlock"
+    notes: ""
+
+  - plc_address: "I3.1"
+    sheet_tag: "IN106"
+    description: "Emergency stop (ACİL STOP)"
+    system_target: "E-Stop"
+    notes: "E-stop pressed"
+
+  - plc_address: "I3.2"
+    sheet_tag: "IN107"
+    description: "Table clamp forward (TABLA SABİTLEME İLERİDE)"
+    system_target: "Table Clamp"
+    notes: ""
+
+  - plc_address: "I3.3"
+    sheet_tag: "IN108"
+    description: "Table clamp back (TABLA SABİTLEME GERİDE)"
+    system_target: "Table Clamp"
+    notes: ""
+
+  - plc_address: "I3.4"
+    sheet_tag: "IN109"
+    description: "Spare input 1 (boş in1)"
+    system_target: "Unused"
+    notes: ""
+
+  - plc_address: "I3.5"
+    sheet_tag: "IN110"
+    description: "Spare input 2 (boş in2)"
+    system_target: "Unused"
+    notes: ""
+
+  - plc_address: "I3.6"
+    sheet_tag: "IN111"
+    description: "Spare input 3 (boş in3)"
+    system_target: "Unused"
+    notes: ""
+
+  - plc_address: "I3.7"
+    sheet_tag: "IN112"
+    description: "Spare input 4 (boş in4)"
+    system_target: "Unused"
+    notes: ""
+
+outputs:
+  - tag: "OUT81"
+    description: "Linear gripper actuator (LİNEAR TUTUCU)"
+    notes: ""
+
+  - tag: "OUT82"
+    description: "Linear locking cylinder (LİNEAR SABİTLEME SİLİNDİRİ)"
+    notes: ""
+
+  - tag: "OUT83"
+    description: "Linear pulling cylinder (LİNEAR ÇEKME SİLİNDİRİ)"
+    notes: ""
+
+  - tag: "OUT84"
+    description: "Robot tool gripper (ROBOT TOOL GRİPER)"
+    notes: "Command to robot tool"
+
+  - tag: "OUT85"
+    description: "1477 needle insertion (1477 İĞNELEME)"
+    notes: ""
+
+  - tag: "OUT86"
+    description: "1480 needle insertion (1480 İĞNELEME)"
+    notes: ""
+
+  - tag: "OUT87"
+    description: "Table clamp (TABLA SABİTLEME)"
+    notes: ""
+
+  - tag: "OUT88"
+    description: "Pilot warning valve (PİLOT UYARI VALFİ, NC)"
+    notes: "NC valve control"
+
+  - tag: "OUT89"
+    description: "Pilot warning valve (duplicate/config)"
+    notes: ""
+
+  - tag: "OUT90"
+    description: "Closed-center valve rotary forward"
+    notes: ""
+
+  - tag: "OUT91"
+    description: "Closed-center valve rotary back"
+    notes: ""
+
+  - tag: "OUT92"
+    description: "Closed-center valve forward"
+    notes: ""
+
+  - tag: "OUT93"
+    description: "Closed-center valve back"
+    notes: ""
+
+  - tag: "OUT94"
+    description: "1477 left vacuum ON"
+    notes: "Vacuum control"
+
+  - tag: "OUT95"
+    description: "1477 left vacuum blow-off"
+    notes: "Vacuum blow-off"
+
+  - tag: "OUT96"
+    description: "1477 right vacuum ON"
+    notes: ""
+
+  - tag: "OUT97"
+    description: "1477 right vacuum blow-off"
+    notes: ""
+
+  - tag: "OUT98"
+    description: "1480 left vacuum ON"
+    notes: ""
+
+  - tag: "OUT99"
+    description: "1480 left vacuum blow-off"
+    notes: ""
+
+  - tag: "OUT100"
+    description: "1480 right vacuum ON"
+    notes: ""
+
+  - tag: "OUT101"
+    description: "1480 right vacuum blow-off"
+    notes: ""
+
+  - tag: "OUT102"
+    description: "System air (compressor / air)"
+    notes: ""
+
+  - tag: "OUT103"
+    description: "Alarm output"
+    notes: "Audible/visual alarm"
+
+  - tag: "OUT104"
+    description: "Green lamp (YEŞİL LAMBA)"
+    notes: "Indicator"
+
+  - tag: "OUT105"
+    description: "Right box full indicator (SAĞ KASA DOLU)"
+    notes: ""
+
+  - tag: "OUT106"
+    description: "Left box full indicator (SOL KASA DOLU)"
+    notes: ""
+
+  - tag: "OUT107"
+    description: "Camera exe command on"
+    notes: "Camera control"
+
+  - tag: "OUT108"
+    description: "Camera exe 1 on"
+    notes: ""
+
+  - tag: "OUT109"
+    description: "Camera exe 2 on"
+    notes: ""
+
+  - tag: "OUT110"
+    description: "Camera exe acknowledge"
+    notes: ""
+
+  - tag: "OUT111"
+    description: "Lighting (AYDINLATMA)"
+    notes: ""
+
+  - tag: "OUT112"
+    description: "Spare output (BOŞ2)"
+    notes: "Unused"
+
