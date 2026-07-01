@@ -215,7 +215,7 @@ async def _consume_loop(consumer: Consumer, conn: list, model, model_version) ->
         else:
             ml_score, ml_flag = None, None
 
-        prior_fault_end = await loop.run_in_executor(None, latest_fault_cycle_end, conn[0])
+        prior_fault_end = await _call_with_db_retry(conn, latest_fault_cycle_end)
         if prior_fault_end is not None:
             time_since_last_fault_seconds = (
                 features["cycle_end_time"] - prior_fault_end
@@ -244,7 +244,7 @@ async def _consume_loop(consumer: Consumer, conn: list, model, model_version) ->
             "model_version": model_version,
         }
 
-        await _insert_with_retry(conn, metric)
+        await _call_with_db_retry(conn, insert_cycle_metric, metric)
         await _commit(loop, consumer)
 
         logger.info(
@@ -260,14 +260,23 @@ async def _commit(loop, consumer: Consumer) -> None:
     await loop.run_in_executor(None, functools.partial(consumer.commit, asynchronous=False))
 
 
-async def _insert_with_retry(conn: list, metric: dict) -> None:
+async def _call_with_db_retry(conn: list, func, *args):
+    """
+    Run a blocking DB call (insert_cycle_metric, latest_fault_cycle_end,
+    ...) with retry-on-OperationalError, reconnecting conn[0] as needed
+    (see connect_db_with_retry). Every TimescaleDB touchpoint in this
+    loop must go through here: a transient outage must never propagate
+    past this point, since an unhandled OperationalError would crash
+    the process (only KafkaException is caught in run()) and reset all
+    in-memory state - the accumulator, EWMA baseline, and cycles_seen -
+    on restart.
+    """
     loop = asyncio.get_running_loop()
     while True:
         try:
-            await loop.run_in_executor(None, insert_cycle_metric, conn[0], metric)
-            return
+            return await loop.run_in_executor(None, func, conn[0], *args)
         except OperationalError as exc:
-            logger.warning("DB write failed (%s); reconnecting and retrying...", exc)
+            logger.warning("DB call failed (%s); reconnecting and retrying...", exc)
             try:
                 await loop.run_in_executor(None, conn[0].close)
             except Exception:
