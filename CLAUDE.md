@@ -63,6 +63,20 @@ When generating code, refactoring, or writing tests for this repository, adhere 
 
 ---
 
+### Phase 5: Anomaly Detection / Predictive Maintenance Layer
+**Objective:** Give the pipeline an actual analytics/ML component - reconstruct completed production cycles from the telemetry stream and flag anomalous ones, instead of only ingesting and dashboarding raw events.
+
+* [ ] **Task 5.1:** Add a standalone `analytics/` service with its own Kafka consumer group (`foam-placement-analytics`), decoupled from `consumer/consumer.py` per Section 2's Separation of Concerns - detecting a "cycle" requires FSM-semantic knowledge that `consumer.py` is deliberately kept agnostic of.
+* [ ] **Task 5.2:** Reconstruct cycles from the ordered event stream (`analytics/cycle_boundary.py`'s `CycleAccumulator`: closes on `IDLE` re-entry after having left `IDLE`; a `RED_HANDLING` excursion does not close a cycle, since `core/fsm.py`'s edge-triggered reset returns to `_state_before_error`, not to `IDLE`).
+* [ ] **Task 5.3:** Engineer per-cycle features (`analytics/features.py`): duration, per-state dwell time (JSONB), safety-interrupt excursion flag/duration, alarm codes, count deltas.
+* [ ] **Task 5.4:** Score every cycle with two explainable, independent layers (`analytics/scoring.py`): an EWMA + control-limits statistical baseline (bootstraps in ~5-10 cycles), and an offline-trained IsolationForest (needs ~50+ cycles, trained via `analytics/model_training/train_isolation_forest.py`, loaded at service startup only - restart-to-reload, not hot-reload, for v1 simplicity).
+* [ ] **Task 5.5:** Store results in a new `cycle_metrics` hypertable (`database/models.py`) and visualize them in a second Grafana dashboard (`config/grafana/dashboards/analytics.json`).
+
+> 📋 **Prompt Template for Phase 5:**
+> *"Act as a Data Engineer / ML Engineer. Add a decoupled analytics service that consumes the existing telemetry Kafka topic under its own consumer group, reconstructs completed FSM cycles, engineers per-cycle features (duration, per-state dwell time, fault excursions), and flags anomalies with both a statistical baseline (EWMA/control limits) and an unsupervised ML model (IsolationForest) trained offline. Keep it fully decoupled from the existing ingestion consumer, and keep all feature/scoring math in pure, unit-testable functions."*
+
+---
+
 ## 4. Progress Tracking Dashboard
 | Phase | Feature / Fix | Status | Target Date | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -70,14 +84,16 @@ When generating code, refactoring, or writing tests for this repository, adhere 
 | **2** | Hardware Reset / Interruption Lock | ✅ Done (live-verified) | | Edge-triggered reset in `core/fsm.py` (`_handle_red_state`); unit-covered in `tests/test_fsm_red_handling.py` (5 tests) and exercised end-to-end through Kafka -> consumer -> TimescaleDB -> Grafana via `main.py`'s opt-in `ENABLE_FAULT_SCENARIO` fault-injecting driver |
 | **3** | Consumer Micro-batching | ✅ Done | | `consumer/consumer.py`: flush at 50 records / 2s, whichever first (`psycopg2.extras.execute_batch`); manual Kafka offset commit *after* a confirmed TimescaleDB write (`enable.auto.commit=False` + `consumer.commit()` in `_flush`) closes a data-loss gap where auto-commit could ack offsets for still-unflushed buffered messages |
 | **4** | Asyncio Migration | ✅ Done (live-verified) | | `main.py`'s scan loop and `consumer/consumer.py`'s poll/DB/commit loop are now `async def` (`asyncio.sleep`, `asyncio.run`); confluent-kafka/psycopg2 calls are kept off the event loop via `loop.run_in_executor`. Kept `confluent-kafka` rather than migrating to `aiokafka` (backlog text predated the `kafka-python-ng` -> `confluent-kafka` switch) - swapping a client that's already proven resilient live wasn't worth re-verifying from scratch. DB-outage recovery re-tested live under the async consumer with identical results to Phase 3 |
+| **5** | Anomaly Detection / Predictive Maintenance | ✅ Done (live-verified) | | New `analytics/` service (own Kafka consumer group `foam-placement-analytics`), `cycle_metrics` hypertable, EWMA + IsolationForest scoring, second Grafana dashboard (`analytics.json`); 12 new unit tests (features/cycle-boundary/scoring), all pure-function, no live dependency. Live run surfaced a real gap: cycles spanning a dev-session restart (main.py stopped/started) got recorded with multi-minute durations, corrupting the EWMA baseline - fixed with `MAX_PLAUSIBLE_CYCLE_SECONDS`, which drops implausibly long cycles the same way the first-cycle-after-startup case is already dropped. Model trained on 58 clean cycles, live-verified scoring both nominal and RED_HANDLING cycles correctly |
 
 ### 5. Infrastructure (added this session)
-- `docker-compose.yml`: Kafka (KRaft mode, dual INTERNAL/EXTERNAL listener), TimescaleDB, Grafana, `consumer` service, optional `simulator` service (profile-gated).
-- `database/models.py`: hypertable DDL + `insert_events_batch()` used by Phase 3 above.
+- `docker-compose.yml`: Kafka (KRaft mode, dual INTERNAL/EXTERNAL listener), TimescaleDB, Grafana, `consumer` service, `analytics` service (Phase 5), optional `simulator` service (profile-gated).
+- `database/models.py`: hypertable DDL + `insert_events_batch()` used by Phase 3 above; additive `cycle_metrics` hypertable + `insert_cycle_metric()`/`fetch_recent_cycle_features()`/`latest_fault_cycle_end()` for Phase 5.
 - `telemetry/kafka_producer.py`: non-blocking publish, decoupled from the FSM control loop per architecture.md 4.2.
 - `main.py`: wires FSM + a scripted `_DemoSensorDriver` (stand-in for the real PLC IO bridge) + the producer. Optional `_FaultInjectingSensorDriver` (enabled via `ENABLE_FAULT_SCENARIO=true` env var) periodically drives a real E-Stop -> `RED_HANDLING` -> edge-triggered-reset scenario through the live pipeline, so the Grafana "Error Count Over Time" panel gets real data instead of staying empty.
-- `config/grafana/`: auto-provisioned datasource + dashboard (5 panels: kasa counter, error count over time, event distribution by state, state timeline, last 20 events table).
-- Known gotcha: `kafka-python` 2.0.2 is broken on Python 3.12; swapped to `kafka-python-ng` (drop-in fork, same `import kafka`).
+- `analytics/`: standalone anomaly-detection service (Phase 5) - `analytics_consumer.py` (live asyncio Kafka consumer, own consumer group), `features.py`/`cycle_boundary.py`/`scoring.py` (pure, unit-tested), `model_training/train_isolation_forest.py` (manual/periodic offline trainer, not a long-running service).
+- `config/grafana/`: auto-provisioned datasource + two dashboards - `foam_placement.json` (5 panels: kasa counter, error count over time, event distribution by state, state timeline, last 20 events table) and `analytics.json` (4 panels: cycle-time trend with control limits, anomaly score over time, flagged anomalous cycles, rolling error rate).
+- Known gotcha: `kafka-python` 2.0.2 is broken on Python 3.12; swapped to `kafka-python-ng` (drop-in fork, same `import kafka`), then to `confluent-kafka` (librdkafka-backed, prebuilt wheels for Python 3.12/3.13 on Windows).
 
 ---
 *Generated for architectural development iteration 2026.*

@@ -28,6 +28,7 @@ The project bridges industrial automation with modern software engineering pract
 - **Vacuum Control Logic:** Feedback synchronization for dual-vacuum grippers (Model 1477 & 1480) with blow-off sequences.
 - **Safety Interlocks:** Monitoring of light curtains, door/vibration sensors, and hardware E-Stop switches.
 - **Data Streaming Pipeline:** Low-latency telemetry broadcasting to Kafka topics for analytics.
+- **Predictive Maintenance:** A decoupled analytics service reconstructs completed production cycles from the telemetry stream, engineers per-cycle features (duration, per-state dwell time, safety-interrupt excursions), and flags anomalies with both an EWMA statistical baseline and a trained IsolationForest model - see [Predictive maintenance / anomaly detection](#predictive-maintenance--anomaly-detection).
 
 ## Project structure
 
@@ -44,6 +45,13 @@ The project bridges industrial automation with modern software engineering pract
 ├── consumer/
 │   ├── __init__.py
 │   └── consumer.py           # Kafka'yı dinleyip veritabanına (DB) yazan servis
+├── analytics/                 # Anomali tespiti / öngörücü bakım servisi
+│   ├── features.py           # Saf çevrim başına özellik mühendisliği
+│   ├── cycle_boundary.py      # Saf çevrim sınırı tespiti (CycleAccumulator)
+│   ├── scoring.py             # EWMA + IsolationForest skorlama
+│   ├── analytics_consumer.py  # Canlı asyncio Kafka tüketicisi (kendi consumer group'u)
+│   └── model_training/
+│       └── train_isolation_forest.py  # Tek seferlik/periyodik model eğitim script'i
 ├── database/                 # Opsiyonel: DB bağlantı ve şema ayarları
 │   ├── __init__.py
 │   └── models.py             # Zaman serisi veya ilişkisel DB modelleri
@@ -172,6 +180,22 @@ The pipeline serializes register states and emits an event to the `scara.telemet
 }
 ```
 
+## Predictive maintenance / anomaly detection
+
+`analytics/analytics_consumer.py` subscribes to `scara.telemetry.v1` under its own Kafka consumer group (`foam-placement-analytics`) - decoupled from `consumer/consumer.py` so the ML stack can never stall raw telemetry ingestion. It reconstructs each completed production cycle (`analytics/cycle_boundary.py`), engineers per-cycle features such as cycle duration, per-state dwell time, and safety-interrupt (`RED_HANDLING`) excursions (`analytics/features.py`), and scores every cycle with two independent, explainable layers (`analytics/scoring.py`):
+
+1. **EWMA + control limits** on cycle duration - a classic statistical-process-control technique, usable from the very first few cycles.
+2. **IsolationForest** (scikit-learn) over the full feature vector - trained offline, not online, so it needs a manual training step once enough cycles exist.
+
+Results land in the `cycle_metrics` hypertable (`database/models.py`) and are visualized in a second, auto-provisioned Grafana dashboard, "Foam Placement Machine - Predictive Maintenance" (`config/grafana/dashboards/analytics.json`): cycle-time trend with 3-sigma control bands, anomaly score over time, a table of flagged anomalous cycles, and a rolling error rate.
+
+To train the IsolationForest model (needs ~50+ completed cycles first - just let `main.py` and `analytics` run for a while):
+
+```bash
+docker compose run --rm analytics python analytics/model_training/train_isolation_forest.py
+docker compose restart analytics   # v1 is restart-to-reload, not hot-reload
+```
+
 ## Getting started
 
 ### Prerequisites
@@ -193,8 +217,9 @@ This starts:
 |---|---|---|
 | Kafka | `localhost:9092` (EXTERNAL) | dual listener: `kafka:29092` for containers, `localhost:9092` for host processes |
 | TimescaleDB | `localhost:5432` | db=`foam_placement`, user=`foam_admin` (see `docker-compose.yml`) |
-| Grafana | `localhost:3000` | login `admin` / `admin`; dashboard "Foam Placement Machine - Digital Twin" auto-provisioned |
+| Grafana | `localhost:3000` | login `admin` / `admin`; dashboards "Foam Placement Machine - Digital Twin" and "Foam Placement Machine - Predictive Maintenance" auto-provisioned |
 | consumer | - | Kafka -> TimescaleDB micro-batch writer (50 records / 2s, whichever first) |
+| analytics | - | Cycle-boundary detection + anomaly scoring -> `cycle_metrics` (see [Predictive maintenance / anomaly detection](#predictive-maintenance--anomaly-detection)) |
 
 The FSM simulator (`main.py`) is **not** started by `docker compose up` by default - run it locally against the host-exposed Kafka port so you can iterate on it quickly:
 
@@ -211,8 +236,10 @@ To containerize the simulator too instead: `docker compose --profile simulator u
 ### Verifying the pipeline
 
 - `docker compose logs -f consumer` - should show `Flushed N events to TimescaleDB.` roughly every 2 seconds once `main.py` is running.
-- Open Grafana at `http://localhost:3000` - the pre-provisioned dashboard shows kasa counters, error count over time, event distribution by state, a state timeline, and the last 20 raw events.
+- `docker compose logs -f analytics` - should show `cycle closed: duration=...` roughly once per full IDLE->CYCLE_DONE->IDLE cycle.
+- Open Grafana at `http://localhost:3000` - the "Digital Twin" dashboard shows kasa counters, error count over time, event distribution by state, a state timeline, and the last 20 raw events; the "Predictive Maintenance" dashboard shows cycle-time trend/control limits, anomaly scores, flagged anomalous cycles, and rolling error rate.
 - `psql -h localhost -U foam_admin -d foam_placement -c "SELECT * FROM telemetry_events ORDER BY time DESC LIMIT 5;"` (password `foam_admin_pw`).
+- `psql -h localhost -U foam_admin -d foam_placement -c "SELECT cycle_end_time, cycle_duration_seconds, had_red_handling, stat_anomaly_flag FROM cycle_metrics ORDER BY cycle_end_time DESC LIMIT 5;"`.
 
 ### Running tests
 
