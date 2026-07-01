@@ -121,3 +121,129 @@ def insert_events_batch(conn, events: list[dict]) -> int:
         psycopg2.extras.execute_batch(cur, INSERT_EVENT_SQL, events, page_size=100)
     conn.commit()
     return len(events)
+
+
+# ----------------------------------------------------------------------
+# Analytics schema (claude.md Phase 5 - anomaly detection / predictive
+# maintenance). Additive: telemetry_events and init_db() above are
+# untouched. Only analytics/analytics_consumer.py calls init_analytics_db.
+# ----------------------------------------------------------------------
+# dwell_seconds/alarm_codes are JSONB rather than fixed columns so this
+# schema survives future FSM state additions without a migration.
+CREATE_CYCLE_METRICS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS cycle_metrics (
+    cycle_end_time                  TIMESTAMPTZ         NOT NULL,
+    machine_id                      TEXT                NOT NULL DEFAULT 'foam_placement_01',
+    cycle_start_time                TIMESTAMPTZ         NOT NULL,
+    cycle_duration_seconds           DOUBLE PRECISION    NOT NULL,
+    dwell_seconds                   JSONB               NOT NULL,
+    had_red_handling                BOOLEAN             NOT NULL DEFAULT FALSE,
+    red_handling_seconds             DOUBLE PRECISION    NOT NULL DEFAULT 0,
+    alarm_codes                     JSONB               NOT NULL DEFAULT '[]',
+    right_count_delta                INTEGER             NOT NULL DEFAULT 0,
+    left_count_delta                 INTEGER             NOT NULL DEFAULT 0,
+    error_count_at_cycle_end          INTEGER             NOT NULL DEFAULT 0,
+    time_since_last_fault_seconds     DOUBLE PRECISION,
+    ewma_cycle_duration              DOUBLE PRECISION,
+    ewma_stddev_cycle_duration        DOUBLE PRECISION,
+    stat_anomaly_flag                BOOLEAN,
+    ml_anomaly_flag                  BOOLEAN,
+    ml_anomaly_score                 DOUBLE PRECISION,
+    model_version                   TEXT
+);
+"""
+
+CREATE_CYCLE_METRICS_HYPERTABLE_SQL = """
+SELECT create_hypertable(
+    'cycle_metrics', 'cycle_end_time',
+    if_not_exists => TRUE
+);
+"""
+
+CREATE_CYCLE_METRICS_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_cycle_metrics_anomaly
+    ON cycle_metrics (ml_anomaly_flag, cycle_end_time DESC)
+    WHERE ml_anomaly_flag IS TRUE;
+"""
+
+INSERT_CYCLE_METRIC_SQL = """
+INSERT INTO cycle_metrics (
+    cycle_end_time, machine_id, cycle_start_time, cycle_duration_seconds,
+    dwell_seconds, had_red_handling, red_handling_seconds, alarm_codes,
+    right_count_delta, left_count_delta, error_count_at_cycle_end,
+    time_since_last_fault_seconds, ewma_cycle_duration,
+    ewma_stddev_cycle_duration, stat_anomaly_flag, ml_anomaly_flag,
+    ml_anomaly_score, model_version
+) VALUES (
+    %(cycle_end_time)s, %(machine_id)s, %(cycle_start_time)s, %(cycle_duration_seconds)s,
+    %(dwell_seconds)s, %(had_red_handling)s, %(red_handling_seconds)s, %(alarm_codes)s,
+    %(right_count_delta)s, %(left_count_delta)s, %(error_count_at_cycle_end)s,
+    %(time_since_last_fault_seconds)s, %(ewma_cycle_duration)s,
+    %(ewma_stddev_cycle_duration)s, %(stat_anomaly_flag)s, %(ml_anomaly_flag)s,
+    %(ml_anomaly_score)s, %(model_version)s
+);
+"""
+
+LATEST_FAULT_CYCLE_END_SQL = """
+SELECT MAX(cycle_end_time) FROM cycle_metrics WHERE had_red_handling IS TRUE;
+"""
+
+SELECT_RECENT_CYCLE_FEATURES_SQL = """
+SELECT cycle_duration_seconds, dwell_seconds, red_handling_seconds, had_red_handling
+FROM cycle_metrics
+ORDER BY cycle_end_time DESC
+LIMIT %(limit)s;
+"""
+
+
+def init_analytics_db(conn) -> None:
+    """
+    Create the cycle_metrics hypertable and supporting index if they do
+    not already exist. Called only by analytics/analytics_consumer.py -
+    consumer.py's init_db() and telemetry_events are untouched.
+    """
+    with conn.cursor() as cur:
+        cur.execute(CREATE_CYCLE_METRICS_TABLE_SQL)
+        cur.execute(CREATE_CYCLE_METRICS_HYPERTABLE_SQL)
+        cur.execute(CREATE_CYCLE_METRICS_INDEX_SQL)
+    conn.commit()
+
+
+def latest_fault_cycle_end(conn):
+    """Return the cycle_end_time of the most recent RED_HANDLING excursion, or None."""
+    with conn.cursor() as cur:
+        cur.execute(LATEST_FAULT_CYCLE_END_SQL)
+        (value,) = cur.fetchone()
+        return value
+
+
+def insert_cycle_metric(conn, metric: dict) -> None:
+    """
+    Single-row insert for one completed production cycle. Cycles
+    complete far less often than raw telemetry ticks, so unlike
+    insert_events_batch there is no need for micro-batching here.
+
+    `metric` is a flat dict matching INSERT_CYCLE_METRIC_SQL's named
+    parameters; dwell_seconds/alarm_codes must be plain dict/list
+    (wrapped in psycopg2.extras.Json here, not by the caller).
+    """
+    row = dict(metric)
+    row["dwell_seconds"] = psycopg2.extras.Json(row["dwell_seconds"])
+    row["alarm_codes"] = psycopg2.extras.Json(row["alarm_codes"])
+
+    with conn.cursor() as cur:
+        cur.execute(INSERT_CYCLE_METRIC_SQL, row)
+    conn.commit()
+
+
+def fetch_recent_cycle_features(conn, limit: int) -> list[dict]:
+    """
+    Read the most recent `limit` completed cycles' engineered features
+    back out for model training (analytics/model_training/train_isolation_forest.py).
+    Returns rows oldest-first (reversed from the DESC query) so a model
+    trained on them sees cycles in chronological order.
+    """
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(SELECT_RECENT_CYCLE_FEATURES_SQL, {"limit": limit})
+        rows = cur.fetchall()
+    return [dict(row) for row in reversed(rows)]
